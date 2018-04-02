@@ -3,6 +3,8 @@
 This is a solution to CSCI 6780
 [Programming Project 4](./docs/Programming-Project4.pdf).
 
+The repo for this project is at https://github.com/evaitl/6780p4.
+
 # Running
 
 Type "make" to build.

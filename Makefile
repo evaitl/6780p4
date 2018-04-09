@@ -1,4 +1,4 @@
-CLASSES:=CH.class 
+CLASSES:=BCH.class CH.class 
 
 .PHONY: all clean indent
 

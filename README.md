@@ -27,7 +27,7 @@ ipaddr/port. Upstream is closer to the BCH and has lower ranges.
 
 - query
 
-Response "rangeLower rangeUpper upaddr upport"
+Response "rangeLower rangeUpper nextAddr nextPort"
 
 - enterdown addr port
 

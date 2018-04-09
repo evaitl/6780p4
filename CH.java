@@ -25,11 +25,11 @@ class CH {
     // Address I bind to.
     InetSocketAddress myAddr;
     // upstream address. (lower range).
-    InetSocketAddress upAddr;
+    InetSocketAddress prevAddr;
     // Downstream address (higher range).
-    InetSocketAddress downAddr;
+    InetSocketAddress nextAddr;
 
-    // Invarient: downAddr rangeLower=this.rangeUpper
+    // Invarient: nextAddr rangeLower=this.rangeUpper
 
     // Address of BCH.
     InetSocketAddress bsAddr;
@@ -57,12 +57,12 @@ class CH {
     }
 
     private void doEnter() throws IOException {
-        upAddr = bsAddr;
-        downAddr = bsAddr;
+        prevAddr = bsAddr;
+        nextAddr = bsAddr;
         boolean locationFound = false;
         while (!locationFound) {
             try (Socket s = new Socket()) {
-                s.connect(upAddr);
+                s.connect(prevAddr);
                 s.getOutputStream().write("query\n".getBytes());
                 Scanner sin = new Scanner(s.getInputStream());
                 int upRL = sin.nextInt();
@@ -73,15 +73,15 @@ class CH {
                     locationFound = true;
                     rangeLower = upRL;
                 }else{
-                    downAddr = upAddr;
-                    upAddr = new InetSocketAddress(InetAddress.getByName(nextHost),
-                                                   port);
+                    nextAddr = prevAddr;
+                    prevAddr = new InetSocketAddress(InetAddress.getByName(nextHost),
+                                                     port);
                 }
             }
         }
         // Send enterdown
         try (Socket s = new Socket()) {
-            s.connect(downAddr);
+            s.connect(nextAddr);
             s.getOutputStream().write(String.format("enterdown %s %d\n",
                                                     myAddr.getHostString(),
                                                     myAddr.getPort()).getBytes());
@@ -89,7 +89,7 @@ class CH {
         }
         // Send enterup
         try (Socket s = new Socket()) {
-            s.connect(upAddr);
+            s.connect(prevAddr);
             s.getOutputStream().write(String.format("enterup %d %s %d\n",
                                                     rangeUpper,
                                                     myAddr.getHostString(),
@@ -100,22 +100,22 @@ class CH {
 
     private void doExit() throws IOException {
         try (Socket s = new Socket()) {
-            s.connect(upAddr);
+            s.connect(prevAddr);
             s.getOutputStream().write(String.format("exitup %d %s %d\n",
                                                     rangeLower,
-                                                    upAddr.getHostString(),
-                                                    upAddr.getPort()).getBytes());
+                                                    prevAddr.getHostString(),
+                                                    prevAddr.getPort()).getBytes());
             (new Scanner(s.getInputStream())).nextLine();// check ok?
             rangeLower = rangeUpper;
         }
         try (Socket s = new Socket()) {
-            s.connect(downAddr);
+            s.connect(nextAddr);
             s.getOutputStream().write(String.format("exitdown %s %d\n",
-                                                    downAddr.getHostString(),
-                                                    downAddr.getPort()).getBytes());
+                                                    nextAddr.getHostString(),
+                                                    nextAddr.getPort()).getBytes());
             (new Scanner(s.getInputStream())).nextLine();// check ok?
         }
-        xferData(upAddr);
+        xferData(prevAddr);
     }
 
     private void userRun(){
@@ -168,14 +168,14 @@ class CH {
         case "query":
         {
             ps.printf("%d %s %d\n", rangeUpper,
-                      upAddr.getHostString(),
-                      upAddr.getPort());
+                      nextAddr.getHostString(),
+                      nextAddr.getPort());
         }
         break;
         case "enterdown":
         {
-            upAddr = new InetSocketAddress(InetAddress.getByName(cmd[1]),
-                                           Integer.parseInt(cmd[2]));
+            prevAddr = new InetSocketAddress(InetAddress.getByName(cmd[1]),
+                                             Integer.parseInt(cmd[2]));
             ps.print("ok\n");
         }
         break;
@@ -185,10 +185,10 @@ class CH {
             if (rangeLower >= rangeUpper) {
                 throw new IllegalStateException();
             }
-            downAddr = new InetSocketAddress(InetAddress.getByName(cmd[2]),
+            nextAddr = new InetSocketAddress(InetAddress.getByName(cmd[2]),
                                              Integer.parseInt(cmd[3]));
             ps.print("ok\n");
-            xferData(downAddr);
+            xferData(nextAddr);
         }
         break;
         case "exitup":
@@ -197,15 +197,15 @@ class CH {
             if (rangeLower >= rangeUpper) {
                 throw new IllegalStateException();
             }
-            downAddr = new InetSocketAddress(InetAddress.getByName(cmd[2]),
+            nextAddr = new InetSocketAddress(InetAddress.getByName(cmd[2]),
                                              Integer.parseInt(cmd[3]));
             ps.print("ok\n");
         }
         break;
         case "exitdown":
         {
-            upAddr = new InetSocketAddress(InetAddress.getByName(cmd[1]),
-                                           Integer.parseInt(cmd[2]));
+            prevAddr = new InetSocketAddress(InetAddress.getByName(cmd[1]),
+                                             Integer.parseInt(cmd[2]));
             ps.print("ok\n");
         }
         break;
@@ -214,7 +214,7 @@ class CH {
             synchronized (dataMutex) {
                 int key = Integer.parseInt(cmd[1]);
                 if (key <= rangeLower || key > rangeUpper) {
-                    ps.printf("no %s %d\n", upAddr.getHostString(), upAddr.getPort());
+                    ps.printf("no %s %d\n", prevAddr.getHostString(), prevAddr.getPort());
                 }else if (data.get(key) == null) {
                     ps.printf("na\n");
                 }else{
@@ -228,7 +228,7 @@ class CH {
             int key = Integer.parseInt(cmd[1]);
             if (key <= rangeLower || key > rangeUpper) {
                 ps.printf("no %s %d\n",
-                          upAddr.getHostString(), upAddr.getPort());
+                          prevAddr.getHostString(), prevAddr.getPort());
             }else{
                 String msg = String.join(" ", Arrays.copyOfRange(cmd, 2, cmd.length));
                 synchronized (dataMutex) {
@@ -243,7 +243,7 @@ class CH {
             int key = Integer.parseInt(cmd[1]);
             if (key <= rangeLower || key > rangeUpper) {
                 ps.printf("no %s %d\n",
-                          upAddr.getHostString(), upAddr.getPort());
+                          prevAddr.getHostString(), prevAddr.getPort());
             }else{
                 synchronized (dataMutex) {
                     data.remove(Integer.parseInt(cmd[1]));

@@ -22,13 +22,14 @@ input. It will leave the ring when it gets an `exit` command.
 The various name servers need a protocol to talk to one another. This
 is it.
 
-Each CH/BCH will keep track of upstream/downstream ipaddr/port.
+Each CH/BCH will keep track of upstream/downstream
+ipaddr/port. Upstream is closer to the BCH and has lower ranges.
 
 - query
 
-Response "id upaddr upport"
+Response "rangeLower rangeUpper upaddr upport"
 
-- enterdown id addr port
+- enterdown addr port
 
 Sent to previous CH when entering the ring. Response "ok". 
 
@@ -40,8 +41,7 @@ data. assert id is in the range up the next CH.
 
 - exitup lowerId lowerAddr lowerPort
 
-Sent to next CH when exiting. Response is "ok". Followed by zero or
-more insert messages as a data transfer.
+Sent to next CH when exiting. Response is "ok".
 
 -exitdown upperAddr upperPort
 

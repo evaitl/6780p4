@@ -20,55 +20,54 @@ input. It will leave the ring when it gets an `exit` command.
 # Protocol
 
 The various name servers need a protocol to talk to one another. This
-is it. Here a CH is 
+is it. 
 
-Each CH/BCH will keep track of next/prev 
-ipaddr/port. Upstream is closer to the BCH and has lower ranges.
+Each NS/BNS will keep track of next/prev 
+ipaddr/port in the ring. 
 
 - query
 
-Response "rangeLower rangeUpper nextAddr nextPort". The BCH will
-always send 0 as rangeUpper.
+Response "rangeLower rangeUpper nextAddr nextPort". The BNS will
+always send 1024 as rangeUpper.
 
 - enterprev nextAddr nport
 
-Sent to previous CH when entering the ring. Response "ok". 
+Sent to previous NS when entering the ring. Response "ok". The
+entering NS is responsible for entering at the correct location in the
+ring.
 
 - enternext id addr port
 
-Sent to next CH when entering the ring. Response is "ok" followed by
+Sent to next NS when entering the ring. Response is "ok" followed by
 zero or more number "insert" messages from upstream as a transfer of
-data. assert id is in the range up the next CH. 
+data. The new range for the receiver starts with id. 
 
 - exitnext lowerId prevAddr prevPort
 
-Sent to next CH when exiting. Response is "ok". Next CH range now
-starts at lowerId.
+Sent to next NS when exiting. Response is "ok". Next NS range now
+starts at lowerId. If the BNS gets this and lowerId is 0, then the BNS
+range is (-1...1023] instead of (lowerId..1023]
 
 - exitprev upperAddr upperPort
 
-Sent to previous CH when exiting. Response is "ok". 
+Sent to previous NS when exiting. Response is "ok". 
 
 - lookup key
 
-return "ok msg", "no addr port", or "na" . On no, addr/port are for next
-server in ring. "na" means this is the right CH, but no data. 
+return "ok msg", "no addr port", or "na" . On "no", addr/port are for
+next server in ring. "na" means this is the right NS, but no data.
 
 - insert key msg
 
-return "ok" or "no addr port".
-
-After an exitup/exitdown, the CH sends all of its data upstream with
-insert commands.
+return "ok" or "no nextAddr nextPort".
 
 - delete key
 
-return "ok" or "no addr port"
+return "ok" or "na", or "no nextAddr nextPort". On "no", addr/port are
+for next server in ring. "na" means this is the right NS, but no data.
 
 Messages and responses are in a single line terminated with '\n'. One
 message and response pair per TCP connection, which is then torn down.
-
-
 
 # Disclaimer
 

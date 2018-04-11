@@ -197,7 +197,7 @@ class NS {
             if (rangeLower >= rangeUpper) {
                 throw new IllegalStateException();
             }
-            nextAddr = new InetSocketAddress(InetAddress.getByName(cmd[2]),
+            prevAddr = new InetSocketAddress(InetAddress.getByName(cmd[2]),
                                              Integer.parseInt(cmd[3]));
             ps.print("ok\n");
         }

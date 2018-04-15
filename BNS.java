@@ -27,10 +27,10 @@ class BNS {
     InetSocketAddress prevAddr;
     Object dataMutex;
     SortedMap<Integer, String> data;
-    
+
     static class QueryResponse {
         QueryResponse(int rangeLower_, int rangeUpper_,
-		      InetSocketAddress server_, InetSocketAddress next_){
+                      InetSocketAddress server_, InetSocketAddress next_){
             rangeLower = rangeLower_;
             rangeUpper = rangeUpper_;
             next = next_;
@@ -56,6 +56,10 @@ class BNS {
         ss = new ServerSocket(port);
         rangeLower = -1;
         rangeUpper = 1024;
+        out.printf("BNS key 0 on port %d nextAddr %s, prevAddr %s, range (%d, %d]\n",
+                   port,
+                   nextAddr.toString(), prevAddr.toString(),
+                   rangeLower, rangeUpper);
         (new Thread(()->networkRun())).start();
         (new Thread(()->userRun())).start();
     }
@@ -72,16 +76,16 @@ class BNS {
         }else{
             boolean serverFound = false;
             InetSocketAddress next = nextAddr;
-	    QueryResponse qr=null;
+            QueryResponse qr = null;
             while (!serverFound) {
-		qr=query(next);
-		out.printf("Tried server %d\n",qr.rangeUpper);
-		if(key>qr.rangeLower && key<=qr.rangeUpper){
-		    serverFound=true;
-		    out.println("Success");
-		}
-		next=qr.next;
-	    }
+                qr = query(next);
+                out.printf("Tried server %d\n", qr.rangeUpper);
+                if (key > qr.rangeLower && key <= qr.rangeUpper) {
+                    serverFound = true;
+                    out.println("Success");
+                }
+                next = qr.next;
+            }
             try (Socket s = new Socket()) {
                 s.connect(next);
                 String msg = String.format("insert %d %s\n",
@@ -113,15 +117,15 @@ class BNS {
         }else{
             boolean serverFound = false;
             InetSocketAddress next = nextAddr;
-	    QueryResponse qr=null;
+            QueryResponse qr = null;
             while (!serverFound) {
-		qr=query(next);			
-		if (key > qr.rangeLower && key <= qr.rangeUpper) {
-		    serverFound = true;
-		    out.println("Success");
-		}else{
-		    next = qr.next;
-		}
+                qr = query(next);
+                if (key > qr.rangeLower && key <= qr.rangeUpper) {
+                    serverFound = true;
+                    out.println("Success");
+                }else{
+                    next = qr.next;
+                }
             }
             try (Socket s = new Socket()) {
                 s.connect(next);
@@ -166,25 +170,25 @@ class BNS {
                 }
             }
         }else{
-	    boolean serverFound = false;
-	    QueryResponse qr = null;
-	    InetSocketAddress qAddr = nextAddr;
-	    while (!serverFound) {
-		qr = query(qAddr);
-		out.printf("server %d tried\n", qr.rangeUpper);
-		if (key > qr.rangeLower && key <= rangeUpper) {
-		    serverFound = true;
-		}else{
-		    qAddr = qr.next;
-		}
-	    }
-	    String lu = lookup(qAddr, key);
-	    if (lu == null) {
-		out.println("key not found");
-	    }else{
-		out.println("msg: " + lu);
-	    }
-	}
+            boolean serverFound = false;
+            QueryResponse qr = null;
+            InetSocketAddress qAddr = nextAddr;
+            while (!serverFound) {
+                qr = query(qAddr);
+                out.printf("server %d tried\n", qr.rangeUpper);
+                if (key > qr.rangeLower && key <= rangeUpper) {
+                    serverFound = true;
+                }else{
+                    qAddr = qr.next;
+                }
+            }
+            String lu = lookup(qAddr, key);
+            if (lu == null) {
+                out.println("key not found");
+            }else{
+                out.println("msg: " + lu);
+            }
+        }
     }
 
     private QueryResponse query(InetSocketAddress isa) throws IOException {
@@ -246,12 +250,14 @@ class BNS {
                 }
                 String msg = data.get(key);
                 data.remove(key);
+                out.printf("xfer out  %d to %s %d\n",
+                           key, dest.getHostString(), dest.getPort());
                 try (Socket s = new Socket()) {
                     s.connect(dest);
                     s.getOutputStream().
-			write(String.
-			      format("insert %d %s\n", key, msg).
-			      getBytes());
+                    write(String.
+                          format("insert %d %s\n", key, msg).
+                          getBytes());
                     String response = (new Scanner(s.getInputStream())).nextLine().trim();
                     if (!(response.split("\\s+")[0].equals("ok"))) {
                         throw new IllegalStateException("Zone transfer failure of " + key);
@@ -268,16 +274,21 @@ class BNS {
         switch (cmd[0].toLowerCase()) {
         case "query":
         {
-	    int rl=(rangeLower==-1 ? 0:rangeLower);
+            int rl = (rangeLower == -1 ? 0 : rangeLower);
             ps.printf("%d %d %s %d\n", rl, rangeUpper,
                       nextAddr.getHostString(),
                       nextAddr.getPort());
+            out.printf("Recived query. Responding (%d, %d] nextAddr %s\n",
+                       rangeLower, rangeUpper, nextAddr.toString());
+
         }
         break;
         case "enterprev":
         {
             nextAddr = new InetSocketAddress(InetAddress.getByName(cmd[1]),
                                              Integer.parseInt(cmd[2]));
+            out.println("Received enterprev. New nextAddr: %s" +
+                        nextAddr);
             ps.print("ok\n");
         }
         break;
@@ -289,21 +300,27 @@ class BNS {
             }
             prevAddr = new InetSocketAddress(InetAddress.getByName(cmd[2]),
                                              Integer.parseInt(cmd[3]));
+            out.printf("Received enternext. prevAddr %s New range (%d, 0])\n",
+                       prevAddr.toString(), rangeLower);
             ps.print("ok\n");
+
             xferData(prevAddr);
         }
         break;
         case "exitnext":
         {
             rangeLower = Integer.parseInt(cmd[1]);
-	    if(rangeLower==0){
-		rangeLower=-1;
-	    }
+            if (rangeLower == 0) {
+                rangeLower = -1;
+            }
             if (rangeLower >= rangeUpper) {
                 throw new IllegalStateException();
             }
             prevAddr = new InetSocketAddress(InetAddress.getByName(cmd[2]),
                                              Integer.parseInt(cmd[3]));
+            out.printf("recieved exitNext. new prevAddr %s. New range (%d 0]\n",
+                       prevAddr.toString(),
+                       rangeLower);
             ps.print("ok\n");
         }
         break;
@@ -311,6 +328,7 @@ class BNS {
         {
             nextAddr = new InetSocketAddress(InetAddress.getByName(cmd[1]),
                                              Integer.parseInt(cmd[2]));
+            out.println("received exitprev. New nextAddr %s" + nextAddr);
             ps.print("ok\n");
         }
         break;
@@ -318,12 +336,17 @@ class BNS {
         {
             synchronized (dataMutex) {
                 int key = Integer.parseInt(cmd[1]);
+                out.printf("received lookup for key %d\n");
                 if (key <= rangeLower || key > rangeUpper) {
-                    ps.printf("no %s %d\n", prevAddr.getHostString(), prevAddr.getPort());
+                    ps.printf("no %s %d\n", nextAddr.getHostString(), nextAddr.getPort());
+                    out.printf("responded: no %s\n",
+                               nextAddr.toString());
                 }else if (data.get(key) == null) {
                     ps.printf("na\n");
+                    out.printf("responded: na\n");
                 }else{
                     ps.printf("ok %s\n", data.get(key));
+                    out.printf("responded: %s\n", data.get(key));
                 }
             }
         }
@@ -331,12 +354,16 @@ class BNS {
         case "insert":
         {
             int key = Integer.parseInt(cmd[1]);
+            out.printf("insert request for %d\n", key);
             if (key <= rangeLower || key > rangeUpper) {
                 ps.printf("no %s %d\n",
-                          prevAddr.getHostString(), prevAddr.getPort());
+                          nextAddr.getHostString(), nextAddr.getPort());
+                out.printf("responded: no %s %d\n",
+                           nextAddr.getHostString(), nextAddr.getPort());
             }else{
                 String msg = String.join(" ", Arrays.copyOfRange(cmd, 2, cmd.length));
                 synchronized (dataMutex) {
+                    out.printf("Inserting %d:%s\n", key, msg);
                     data.put(key, msg);
                 }
                 ps.print("ok\n");
@@ -346,12 +373,16 @@ class BNS {
         case "delete":
         {
             int key = Integer.parseInt(cmd[1]);
+            out.printf("delete request for %d\n", key);
             if (key <= rangeLower || key > rangeUpper) {
                 ps.printf("no %s %d\n",
-                          prevAddr.getHostString(), prevAddr.getPort());
+                          nextAddr.getHostString(), nextAddr.getPort());
+                out.printf("responded: no %s %d\n", nextAddr.getHostString(),
+                           nextAddr.getPort());
             }else{
+                out.printf("removing key %d\n", key);
                 synchronized (dataMutex) {
-                    data.remove(Integer.parseInt(cmd[1]));
+                    data.remove(key);
                 }
                 ps.print("ok\n");
             }

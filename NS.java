@@ -17,6 +17,7 @@ import java.net.InetSocketAddress;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 
+import static java.lang.System.out;
 
 class NS {
     // Range for this NS is (rangeLower...rangeUpper]
@@ -50,6 +51,7 @@ class NS {
             myAddr = new InetSocketAddress(a, port);
         }
         ss = new ServerSocket(port);
+        out.printf("NS id %d at %s\n", id, myAddr.toString());
         ss.setReuseAddress(true);
         (new Thread(()->networkRun())).start();
         (new Thread(()->userRun())).start();
@@ -60,27 +62,36 @@ class NS {
         prevAddr = bsAddr;
         nextAddr = bsAddr;
         boolean locationFound = false;
+        out.printf("Entering ring. id %d\n", rangeUpper);
         while (!locationFound) {
             try (Socket s = new Socket()) {
-                s.connect(prevAddr);
+                out.println("querying " + nextAddr);
+                s.connect(nextAddr);
                 s.getOutputStream().write("query\n".getBytes());
                 Scanner sin = new Scanner(s.getInputStream());
                 int upRL = sin.nextInt();
                 int upRU = sin.nextInt();
                 String nextHost = sin.next();
                 int port = sin.nextInt();
-                if (upRU == 0 || (upRU < rangeUpper && upRU > rangeUpper)) {
+                prevAddr = nextAddr;
+                nextAddr = new InetSocketAddress(InetAddress.getByName(nextHost),
+                                                 port);
+                out.printf("query response: range (%s %d] nextAddr %s\n",
+                           upRL, upRU, nextAddr.toString());
+                if (upRU < rangeUpper && upRU > rangeUpper) {
                     locationFound = true;
                     rangeLower = upRL;
-                }else{
-                    nextAddr = prevAddr;
-                    prevAddr = new InetSocketAddress(InetAddress.getByName(nextHost),
-                                                     port);
+                    out.printf("My location found. Range (%d %d]\n" +
+                               "prevAddr %s, nextAddr %s\n",
+                               rangeLower, rangeUpper,
+                               prevAddr.toString(),
+                               nextAddr.toString());
                 }
             }
         }
         // Send enterprev
         try (Socket s = new Socket()) {
+            out.println("Sending enterprev to " + prevAddr);
             s.connect(prevAddr);
             s.getOutputStream().write(String.format("enterprev %s %d\n",
                                                     myAddr.getHostString(),
@@ -89,6 +100,7 @@ class NS {
         }
         // Send enternext
         try (Socket s = new Socket()) {
+            out.println("Sending enternext to %s" + nextAddr);
             s.connect(nextAddr);
             s.getOutputStream().write(String.format("enternext %d %s %d\n",
                                                     rangeUpper,
@@ -147,6 +159,7 @@ class NS {
                 }
                 String msg = data.get(key);
                 data.remove(key);
+                out.printf("xfering key %d to %s\n", key, dest.toString());
                 try (Socket s = new Socket()) {
                     s.connect(dest);
                     s.getOutputStream().write(String.
@@ -167,6 +180,8 @@ class NS {
         switch (cmd[0].toLowerCase()) {
         case "query":
         {
+            out.printf("Received query. range (%d %d], next %s\n",
+                       rangeLower, rangeUpper, nextAddr.toString());
             ps.printf("%d %d %s %d\n", rangeLower, rangeUpper,
                       nextAddr.getHostString(),
                       nextAddr.getPort());
@@ -176,6 +191,7 @@ class NS {
         {
             nextAddr = new InetSocketAddress(InetAddress.getByName(cmd[1]),
                                              Integer.parseInt(cmd[2]));
+            out.println("receive enterprev. New nextAddr " + nextAddr);
             ps.print("ok\n");
         }
         break;
@@ -187,6 +203,8 @@ class NS {
             }
             prevAddr = new InetSocketAddress(InetAddress.getByName(cmd[2]),
                                              Integer.parseInt(cmd[3]));
+            out.printf("received enternext. new range (%d, %d]. prev %s\n",
+                       rangeLower, rangeUpper, prevAddr.toString());
             ps.print("ok\n");
             xferData(prevAddr);
         }
@@ -199,6 +217,8 @@ class NS {
             }
             prevAddr = new InetSocketAddress(InetAddress.getByName(cmd[2]),
                                              Integer.parseInt(cmd[3]));
+            out.printf("Received exitnext. new range (%d %d], prevAddr %s\n",
+                       rangeLower, rangeUpper, prevAddr);
             ps.print("ok\n");
         }
         break;
@@ -206,6 +226,7 @@ class NS {
         {
             nextAddr = new InetSocketAddress(InetAddress.getByName(cmd[1]),
                                              Integer.parseInt(cmd[2]));
+            out.println("Receive exitprev. nextAddr " + nextAddr);
             ps.print("ok\n");
         }
         break;
@@ -213,11 +234,16 @@ class NS {
         {
             synchronized (dataMutex) {
                 int key = Integer.parseInt(cmd[1]);
+                out.printf("received lookup for key %d\n");
                 if (key <= rangeLower || key > rangeUpper) {
-                    ps.printf("no %s %d\n", prevAddr.getHostString(), prevAddr.getPort());
+                    out.println("Responding no nextAddr " + nextAddr);
+                    ps.printf("no %s %d", nextAddr.getHostString(),
+                              nextAddr.getPort());
                 }else if (data.get(key) == null) {
+                    out.println("responding na");
                     ps.printf("na\n");
                 }else{
+                    out.printf("responding ok %s\n", data.get(key));
                     ps.printf("ok %s\n", data.get(key));
                 }
             }
@@ -226,9 +252,11 @@ class NS {
         case "insert":
         {
             int key = Integer.parseInt(cmd[1]);
+            out.printf("Received insert for key %d\n", key);
             if (key <= rangeLower || key > rangeUpper) {
+                out.printf("Responding no %s" + nextAddr);
                 ps.printf("no %s %d\n",
-                          prevAddr.getHostString(), prevAddr.getPort());
+                          nextAddr.getHostString(), nextAddr.getPort());
             }else{
                 String msg = String.join(" ", Arrays.copyOfRange(cmd, 2, cmd.length));
                 synchronized (dataMutex) {
@@ -241,14 +269,18 @@ class NS {
         case "delete":
         {
             int key = Integer.parseInt(cmd[1]);
+            out.println("Received delete for key " + key);
             if (key <= rangeLower || key > rangeUpper) {
+                out.println("Responding no  next " + nextAddr);
                 ps.printf("no %s %d\n",
-                          prevAddr.getHostString(), prevAddr.getPort());
+                          nextAddr.getHostString(), nextAddr.getPort());
             }else{
                 synchronized (dataMutex) {
                     if (data.get(key) == null) {
+                        out.println("Can't find key " + key);
                         ps.printf("na\n");
                     }else{
+                        out.println("Removing key " + key);
                         ps.printf("ok\n");
                         data.remove(key);
                     }

@@ -1,9 +1,11 @@
 import java.util.SortedMap;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.Scanner;
 import java.util.Set;
 import java.util.Iterator;
 import java.util.Arrays;
+import java.util.NoSuchElementException;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -176,7 +178,7 @@ class BNS {
             while (!serverFound) {
                 qr = query(qAddr);
                 out.printf("server %d tried\n", qr.rangeUpper);
-                if (key > qr.rangeLower && key <= rangeUpper) {
+                if (key > qr.rangeLower && key <= qr.rangeUpper) {
                     serverFound = true;
                 }else{
                     qAddr = qr.next;
@@ -244,8 +246,13 @@ class BNS {
     }
     private void xferData(InetSocketAddress dest) throws IOException {
         synchronized (dataMutex) {
-            for (int key: data.keySet()) {
-                if (key > rangeLower && key <= rangeUpper) {
+            TreeSet<Integer> keySet = new TreeSet<>(data.keySet());
+            for (int key: keySet) {
+                if (key == 0 || (key > rangeLower && key <= rangeUpper)) {
+                    continue;
+                }
+                if (!data.containsKey(key)) {
+                    out.println("Huh... Doesn't contain key " + key);
                     continue;
                 }
                 String msg = data.get(key);
@@ -266,9 +273,15 @@ class BNS {
             }
         }
     }
-    private void processNetworkCommand(Socket s) throws IOException, UnknownHostException {
-        String line = (new Scanner(s.getInputStream())).nextLine().trim();
+    private void processNetworkCommand(Socket s) throws IOException,
+    UnknownHostException {
+        String line = null;
 
+        try{
+            line = (new Scanner(s.getInputStream())).nextLine().trim();
+        }catch (NoSuchElementException e) {
+            return;
+        }
         String [] cmd = line.split("\\s+");
         PrintStream ps = new PrintStream(s.getOutputStream());
         switch (cmd[0].toLowerCase()) {
@@ -287,7 +300,7 @@ class BNS {
         {
             nextAddr = new InetSocketAddress(InetAddress.getByName(cmd[1]),
                                              Integer.parseInt(cmd[2]));
-            out.println("Received enterprev. New nextAddr: %s" +
+            out.println("Received enterprev. New nextAddr: " +
                         nextAddr);
             ps.print("ok\n");
         }
@@ -300,8 +313,8 @@ class BNS {
             }
             prevAddr = new InetSocketAddress(InetAddress.getByName(cmd[2]),
                                              Integer.parseInt(cmd[3]));
-            out.printf("Received enternext. prevAddr %s New range (%d, 0])\n",
-                       prevAddr.toString(), rangeLower);
+            out.printf("Received enternext. prevAddr %s New range (%d, %d])\n",
+                       prevAddr.toString(), rangeLower, rangeUpper);
             ps.print("ok\n");
 
             xferData(prevAddr);

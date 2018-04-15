@@ -1,3 +1,4 @@
+import java.util.TreeSet;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.Scanner;
@@ -57,10 +58,23 @@ class NS {
         (new Thread(()->userRun())).start();
 
     }
-
+    private InetSocketAddress getPostBSAddr() throws IOException {
+        try (Socket s = new Socket()) {
+            s.connect(bsAddr);
+            out.printf("querying for addr of host after BNS\n");
+            s.getOutputStream().write("query\n".getBytes());
+            Scanner sin = new Scanner(s.getInputStream());
+            sin.nextInt();
+            sin.nextInt();
+            String nextHost = sin.next();
+            int port = sin.nextInt();
+            return new InetSocketAddress(InetAddress.getByName(nextHost),
+                                         port);
+        }
+    }
     private void doEnter() throws IOException {
         prevAddr = bsAddr;
-        nextAddr = bsAddr;
+        nextAddr = getPostBSAddr();
         boolean locationFound = false;
         out.printf("Entering ring. id %d\n", rangeUpper);
         while (!locationFound) {
@@ -73,12 +87,9 @@ class NS {
                 int upRU = sin.nextInt();
                 String nextHost = sin.next();
                 int port = sin.nextInt();
-                prevAddr = nextAddr;
-                nextAddr = new InetSocketAddress(InetAddress.getByName(nextHost),
-                                                 port);
-                out.printf("query response: range (%s %d] nextAddr %s\n",
-                           upRL, upRU, nextAddr.toString());
-                if (upRU < rangeUpper && upRU > rangeUpper) {
+                out.printf("query response: range (%s %d] nextAddr %s %d\n",
+                           upRL, upRU, nextHost, port);
+                if (upRU > rangeUpper) {
                     locationFound = true;
                     rangeLower = upRL;
                     out.printf("My location found. Range (%d %d]\n" +
@@ -86,6 +97,10 @@ class NS {
                                rangeLower, rangeUpper,
                                prevAddr.toString(),
                                nextAddr.toString());
+                }else{
+                    prevAddr = nextAddr;
+                    nextAddr = new InetSocketAddress(InetAddress.getByName(nextHost),
+                                                     port);
                 }
             }
         }
@@ -100,7 +115,7 @@ class NS {
         }
         // Send enternext
         try (Socket s = new Socket()) {
-            out.println("Sending enternext to %s" + nextAddr);
+            out.printf("Sending enternext ru %d to %s\n", rangeUpper, nextAddr.toString());
             s.connect(nextAddr);
             s.getOutputStream().write(String.format("enternext %d %s %d\n",
                                                     rangeUpper,
@@ -113,9 +128,9 @@ class NS {
     private void doExit() throws IOException {
         try (Socket s = new Socket()) {
             s.connect(prevAddr);
-            s.getOutputStream().write(String.format("exitprev %d %s %d\n",
-                                                    prevAddr.getHostString(),
-                                                    prevAddr.getPort()).getBytes());
+            s.getOutputStream().write(String.format("exitprev %s %d\n",
+                                                    nextAddr.getHostString(),
+                                                    nextAddr.getPort()).getBytes());
             (new Scanner(s.getInputStream())).nextLine();// check ok?
             rangeLower = rangeUpper;
         }
@@ -123,8 +138,8 @@ class NS {
             s.connect(nextAddr);
             s.getOutputStream().write(String.format("exitnext %d %s %d\n",
                                                     rangeLower,
-                                                    nextAddr.getHostString(),
-                                                    nextAddr.getPort()).getBytes());
+                                                    prevAddr.getHostString(),
+                                                    prevAddr.getPort()).getBytes());
             (new Scanner(s.getInputStream())).nextLine();// check ok?
         }
         xferData(prevAddr);
@@ -153,8 +168,13 @@ class NS {
     }
     private void xferData(InetSocketAddress dest) throws IOException {
         synchronized (dataMutex) {
-            for (int key: data.keySet()) {
+            TreeSet<Integer> keySet = new TreeSet<>(data.keySet());
+            for (int key: keySet) {
                 if (key > rangeLower && key <= rangeUpper) {
+                    continue;
+                }
+                if (!data.containsKey(key)) {
+                    out.println("Missing key on xfer: " + key);
                     continue;
                 }
                 String msg = data.get(key);
@@ -234,7 +254,7 @@ class NS {
         {
             synchronized (dataMutex) {
                 int key = Integer.parseInt(cmd[1]);
-                out.printf("received lookup for key %d\n");
+                out.println("received lookup for key " + key);
                 if (key <= rangeLower || key > rangeUpper) {
                     out.println("Responding no nextAddr " + nextAddr);
                     ps.printf("no %s %d", nextAddr.getHostString(),

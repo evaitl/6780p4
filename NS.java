@@ -123,18 +123,22 @@ class NS {
                                                     myAddr.getPort()).getBytes());
             (new Scanner(s.getInputStream())).nextLine(); // check ok?
         }
+        out.println("Successful entry.");
     }
 
     private void doExit() throws IOException {
         try (Socket s = new Socket()) {
+            out.printf("Sending exitprev %s to %s\n",
+                       nextAddr.toString(), prevAddr.toString());
             s.connect(prevAddr);
             s.getOutputStream().write(String.format("exitprev %s %d\n",
                                                     nextAddr.getHostString(),
                                                     nextAddr.getPort()).getBytes());
             (new Scanner(s.getInputStream())).nextLine();// check ok?
-            rangeLower = rangeUpper;
         }
         try (Socket s = new Socket()) {
+            out.printf("Sending exitnext %d %s to %s\n",
+                       rangeLower, prevAddr.toString(), nextAddr.toString());
             s.connect(nextAddr);
             s.getOutputStream().write(String.format("exitnext %d %s %d\n",
                                                     rangeLower,
@@ -142,7 +146,11 @@ class NS {
                                                     prevAddr.getPort()).getBytes());
             (new Scanner(s.getInputStream())).nextLine();// check ok?
         }
-        xferData(prevAddr);
+        xferData(nextAddr);
+        out.printf("key range handed over was (%d, %d] to server at %s\n",
+                   rangeLower, rangeUpper, nextAddr.toString());
+        out.println("Successful exit");
+
     }
 
     private void userRun(){
@@ -274,7 +282,7 @@ class NS {
             int key = Integer.parseInt(cmd[1]);
             out.printf("Received insert for key %d\n", key);
             if (key <= rangeLower || key > rangeUpper) {
-                out.printf("Responding no %s" + nextAddr);
+                out.println("Responding no " + nextAddr);
                 ps.printf("no %s %d\n",
                           nextAddr.getHostString(), nextAddr.getPort());
             }else{

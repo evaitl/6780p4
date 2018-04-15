@@ -81,15 +81,17 @@ class BNS {
             QueryResponse qr = null;
             while (!serverFound) {
                 qr = query(next);
-                out.printf("Tried server %d\n", qr.rangeUpper);
+                out.printf("Tried server %d at %s\n", qr.rangeUpper, next.toString());
                 if (key > qr.rangeLower && key <= qr.rangeUpper) {
                     serverFound = true;
                     out.println("Success");
                 }
                 next = qr.next;
             }
+            out.printf("Inserting (%d, %s) in server %d at %s\n",
+                       key, value, qr.rangeUpper, qr.server.toString());
             try (Socket s = new Socket()) {
-                s.connect(next);
+                s.connect(qr.server);
                 String msg = String.format("insert %d %s\n",
                                            key, value);
                 s.getOutputStream().write(msg.getBytes());
@@ -129,8 +131,10 @@ class BNS {
                     next = qr.next;
                 }
             }
+            out.printf("deleting %d from server %d at %s\n",
+                       key, qr.rangeUpper, qr.server.toString());
             try (Socket s = new Socket()) {
-                s.connect(next);
+                s.connect(qr.server);
                 String msg = String.format("delete %d\n",
                                            key);
                 s.getOutputStream().write(msg.getBytes());
@@ -177,7 +181,7 @@ class BNS {
             InetSocketAddress qAddr = nextAddr;
             while (!serverFound) {
                 qr = query(qAddr);
-                out.printf("server %d tried\n", qr.rangeUpper);
+                out.printf("server %d tried at %s\n", qr.rangeUpper, qAddr.toString());
                 if (key > qr.rangeLower && key <= qr.rangeUpper) {
                     serverFound = true;
                 }else{
@@ -194,12 +198,14 @@ class BNS {
     }
 
     private QueryResponse query(InetSocketAddress isa) throws IOException {
+        out.println("querying server " + isa);
         try (Socket s = new Socket()) {
             s.connect(isa);
             s.getOutputStream().write("query\n".getBytes());
             Scanner sin = new Scanner(s.getInputStream());
             int rl = sin.nextInt();
             int ru = sin.nextInt();
+            out.println("server id was " + ru);
             String nextAddr = sin.next();
             int nextPort = sin.nextInt();
             return new QueryResponse(rl, ru, isa,

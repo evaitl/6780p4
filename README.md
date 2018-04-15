@@ -10,12 +10,16 @@ The repo for this project is at https://github.com/evaitl/6780p4.
 Type "make" to build.
 
 Create a bootstrap config file and as many ns config files as you
-would like to run.  Run the bootstap server with "java BCH <cfg name>".
-Run the other servers with "java CH <cfg name>".
+would like to run.  Run the bootstap server with "java BNS <cfg name>".
+Run the other servers with "java NS <cfg name>".
 
-Each CH will join the ring after it gets an `enter` command on its
+The BNS must be started before any of the NS are started. The NS need
+to send their IP addresses to neighbors when entering the ring. They
+get their address by connecting with the BNS and seeing the local
+address on the socket.
+
+Each NS will join the ring after it gets an `enter` command on its
 input. It will leave the ring when it gets an `exit` command.
-
 
 # Protocol
 
